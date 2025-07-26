@@ -1,0 +1,97 @@
+name: Deploy with AZD and OIDC (PowerShell)
+
+on:
+  workflow_dispatch:
+
+# Required permissions for OIDC
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Install azd
+      uses: Azure/setup-azd@v2
+
+    - name: Log in with Azure (OIDC)
+      uses: Azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        enable-oidc: true
+        federated-credential-provider: github
+        
+    - name: AZD Login (Headless)
+      shell: pwsh
+      run: |
+        Write-Host "🔑 Logging in with AZD using federated credentials..."
+        azd auth login `
+          --client-id "$Env:AZURE_CLIENT_ID" `
+          --federated-credential-provider "github" `
+          --tenant-id "$Env:AZURE_TENANT_ID" `
+          --no-browser
+        Write-Host "✅ AZD login successful"
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Deploy with azd
+      shell: pwsh
+      run: |
+        # Set environment variables
+        $Env:AZURE_ENV_NAME = "${{ vars.AZURE_ENV_NAME }}" -or "dev"
+        $Env:AZURE_LOCATION = "${{ vars.AZURE_LOCATION }}" -or "eastus2"
+        $Env:AZURE_SUBSCRIPTION_ID = "${{ secrets.AZURE_SUBSCRIPTION_ID }}"
+        
+        Write-Host "🚀 Starting deployment with azd..."
+        Write-Host "Environment: $Env:AZURE_ENV_NAME"
+        Write-Host "Location: $Env:AZURE_LOCATION"
+        
+        # Initialize azd environment if it doesn't exist
+        try {
+          azd env select $Env:AZURE_ENV_NAME 2>$null
+        } catch {
+          Write-Host "📦 Creating new azd environment: $Env:AZURE_ENV_NAME"
+          azd env new $Env:AZURE_ENV_NAME --location $Env:AZURE_LOCATION --subscription $Env:AZURE_SUBSCRIPTION_ID
+        }
+        
+        # Deploy the application
+        if ("${{ github.event_name }}" -eq "pull_request") {
+          Write-Host "🔍 PR detected - running provision with preview"
+          azd provision --preview
+        } else {
+          Write-Host "🚀 Main branch - deploying application"
+          azd up --no-prompt
+        }
+      env:
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Get deployment outputs
+      if: github.event_name != 'pull_request'
+      shell: pwsh
+      run: |
+        Write-Host "📋 Getting deployment information..."
+        azd show --output table
+        
+        # Try to get endpoint
+        try {
+          $output = azd show --output json | ConvertFrom-Json
+          $endpoint = $output.services[0].endpoint
+          if ($endpoint) {
+            Write-Host "🌐 Application deployed to: $endpoint"
+            echo "ENDPOINT=$endpoint" >> $env:GITHUB_OUTPUT
+          }
+        } catch {
+          Write-Host "⚠️ Could not retrieve endpoint information"
+        }

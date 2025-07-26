@@ -1,0 +1,166 @@
+name: Deploy with AZD and OIDC
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# Required permissions for OIDC
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+      DOTNET_CORE_VERSION: 9.0.x
+      AZD_DEBUG: ${{ vars.AZD_DEBUG || false }}
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_CORE_VERSION }}
+ 
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+
+      - name: Configure Azure CLI authentication
+        shell: bash
+        run: |
+          echo "🔑 Setting up Azure CLI authentication..."
+          export AZURE_CLIENT_ID="${{ vars.AZURE_CLIENT_ID }}"
+          export AZURE_TENANT_ID="${{ vars.AZURE_TENANT_ID }}"
+          export AZURE_SUBSCRIPTION_ID="${{ vars.AZURE_SUBSCRIPTION_ID }}"
+          
+          # Display last 4 characters of client ID for debugging
+          if [[ -n "$AZURE_CLIENT_ID" ]]; then
+            CLIENT_ID_LENGTH=${#AZURE_CLIENT_ID}
+            LAST_FOUR=${AZURE_CLIENT_ID:$CLIENT_ID_LENGTH-4:4}
+            echo "🔑 Using client ID ending with: $LAST_FOUR"
+          else
+            echo "⚠️ Client ID is not set"
+          fi
+
+      - name: Log in with Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set Docker Image Tag Environment Variable
+        run: |
+          # Using a descriptive tag that combines branch, run number, and short SHA
+          # This is the best practice for traceability and immutability.
+          COMMIT_SHA_SHORT=${GITHUB_SHA::7}
+          IMAGE_TAG="${{ github.ref_name }}-${{ github.run_number }}-${COMMIT_SHA_SHORT}"
+          export AZURE_CONTAINER_IMAGE_TAG=${IMAGE_TAG}
+
+          echo "AZURE_CONTAINER_IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          echo "Generated image tag: ${IMAGE_TAG}"
+
+      - name: Deploy with azd
+        shell: bash
+        run: |
+          export AZURE_ENV_NAME=${{ vars.AZURE_ENV_NAME || 'octopets' }}
+          export AZURE_LOCATION="${{ vars.AZURE_LOCATION || 'eastus2' }}"
+          export AZURE_SUBSCRIPTION_ID="${{ vars.AZURE_SUBSCRIPTION_ID }}"
+          export AZURE_CLIENT_ID="${{ vars.AZURE_CLIENT_ID }}"
+          export AZURE_TENANT_ID="${{ vars.AZURE_TENANT_ID }}"
+
+          echo "🔍 Diagnostic information:"
+          echo "AZD version: $(azd version)"
+          echo "Current OIDC token: $(if [[ -n $ACTIONS_ID_TOKEN_REQUEST_TOKEN ]]; then echo 'Present'; else echo 'Not found'; fi)"
+
+          echo "🚀 Starting deployment with azd..."
+          echo "Environment: $AZURE_ENV_NAME"
+          echo "Location: $AZURE_LOCATION"
+          echo "Azure container image tag: $AZURE_CONTAINER_IMAGE_TAG"
+
+          azd auth login --client-id $AZURE_CLIENT_ID --federated-credential-provider github --tenant-id $AZURE_TENANT_ID
+
+          echo "🔍 Changing working directory to ./apphost ..."
+          pwd
+          cd apphost
+          pwd
+
+          if ! azd env select $AZURE_ENV_NAME 2>/dev/null; then
+            echo "📦 Creating new azd environment: $AZURE_ENV_NAME"
+            azd env new $AZURE_ENV_NAME --location $AZURE_LOCATION --subscription $AZURE_SUBSCRIPTION_ID
+          fi
+
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "🔍 PR detected - running provision with preview"
+            azd provision --preview
+          else
+            echo "🚀 Main branch - deploying application"            # Set container image tag before running azd up
+            azd env set AZURE_CONTAINER_IMAGE_TAG $AZURE_CONTAINER_IMAGE_TAG
+            echo "✅ Set container image tag to: $AZURE_CONTAINER_IMAGE_TAG"
+            
+            # Run azd up with the correct environment name
+            if [ "$AZD_DEBUG" = "true" ]; then
+              echo "🐞 Debug mode enabled for AZD"
+              azd up --no-prompt --debug
+            else
+              echo "🚀 Running AZD in normal mode"
+              azd up --no-prompt
+            fi
+            
+            # Add resource tag to container app with the image tag
+            echo "🏷️ Adding resource tag to container app..."
+            # Get the container app resource ID
+            RESOURCE_GROUP=$(azd env get-values | grep AZURE_RESOURCE_GROUP | cut -d '=' -f2 || echo "")
+            CONTAINER_APP_NAME="octopetsapi"
+            
+            if [ -z "$RESOURCE_GROUP" ]; then
+              echo "⚠️ Could not determine resource group from azd env get-values"
+              # Try alternate method to get resource group
+              RESOURCE_GROUP=$(az group list --query "[?contains(name,'$AZURE_ENV_NAME')].name" -o tsv | head -n 1)
+              echo "Alternate method found resource group: $RESOURCE_GROUP"
+            fi
+            
+            if [ -n "$RESOURCE_GROUP" ] && [ -n "$CONTAINER_APP_NAME" ]; then
+              echo "Resource Group: $RESOURCE_GROUP, Container App: $CONTAINER_APP_NAME"
+              
+              # Check if container app exists
+              if az containerapp show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_APP_NAME" &>/dev/null; then
+                echo "✅ Container app found, applying tag..."
+                # Echo the exact tag being set
+                echo "🏷️ Setting tag: CONTAINER_IMAGE_TAG=$AZURE_CONTAINER_IMAGE_TAG" on resource $CONTAINER_APP_NAME
+                # Tag the container app resource with the image tag
+                az tag update --resource-id "/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.App/containerApps/$CONTAINER_APP_NAME" \
+                              --operation Merge \
+                              --tags "CONTAINER_IMAGE_TAG=$AZURE_CONTAINER_IMAGE_TAG" || \
+                echo "⚠️ Failed to add tag to container app, but continuing workflow"
+              else
+                echo "⚠️ Container app '$CONTAINER_APP_NAME' not found in resource group '$RESOURCE_GROUP'"
+                # List existing container apps in the resource group
+                echo "Available container apps in the resource group:"
+                az containerapp list --resource-group "$RESOURCE_GROUP" --query "[].name" -o tsv || echo "No container apps found or failed to list"
+              fi
+            else
+              echo "⚠️ Could not determine container app details for tagging"
+            fi
+          fi
+
+      - name: Get deployment outputs
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          echo "📋 Getting deployment information..."
+          azd show --output table || true

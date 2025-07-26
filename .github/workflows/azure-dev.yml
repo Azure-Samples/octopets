@@ -1,0 +1,133 @@
+# Run when commits are pushed to main
+on:
+  # push:
+  #   # Run when commits are pushed to mainline branch (main or master)
+  #   # Set this to the mainline branch you are using
+  #   branches:
+  #     - main
+  # pull_request:
+  #   branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy to"
+        required: true
+        default: "dev"
+      branch:
+        description: "Branch to deploy from"
+        required: true
+        default: "main"
+
+# Set up permissions for deploying with secretless Azure federated credentials
+# https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure?tabs=azure-portal%2Clinux#set-up-azure-login-with-openid-connect-authentication
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_ENV_NAME: ${{ vars.AZURE_ENV_NAME }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install azd
+        uses: Azure/setup-azd@v2
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: | 
+            8.x.x
+            9.x.x
+
+      - name: Log in with Azure (OIDC)
+        uses: Azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID || vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID || vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID || vars.AZURE_SUBSCRIPTION_ID }}
+          enable-oidc: true
+          federated-credential-provider: github
+          # Ensure additional settings for headless operation
+          allow-no-subscriptions: false
+          
+      - name: Verify Client ID
+        shell: pwsh
+        run: |
+          Write-Host "🔍 Verifying authentication configuration..."
+          $clientId = "${{ secrets.AZURE_CLIENT_ID || vars.AZURE_CLIENT_ID }}"
+          if ($clientId) {
+            $lastFour = $clientId.Substring($clientId.Length - 4)
+            Write-Host "🔑 Using client ID ending with: $lastFour"
+          } else {
+            Write-Host "⚠️ Client ID is not set" -ForegroundColor Yellow
+          }
+
+      - name: Configure AZD for Azure CLI authentication
+        shell: pwsh
+        run: |
+          Write-Host "🔑 Setting up AZD to use Azure CLI authentication..."
+          
+          # Create the azd config directory if it doesn't exist
+          New-Item -Path ~/.azd -ItemType Directory -Force
+          
+          # Configure AZD to use Azure CLI authentication instead of interactive browser login
+          Set-Content -Path ~/.azd/config.json -Value '{"defaults":{"auth":{"useAzureCli":true}}}'
+          
+          # Verify AZD is using the correct configuration
+          Get-Content -Path ~/.azd/config.json
+          
+          # Set environment variables for the deployment
+          $env:AZURE_ENV_NAME = "${{ github.event.inputs.environment || 'dev' }}"
+          $env:AZURE_LOCATION = "${{ vars.AZURE_LOCATION || 'eastus2' }}"
+          $env:AZURE_SUBSCRIPTION_ID = "${{ secrets.AZURE_SUBSCRIPTION_ID || vars.AZURE_SUBSCRIPTION_ID }}"
+          
+          Write-Host "✅ AZD configured to use Azure CLI authentication"
+          Write-Host "🌍 Environment: $env:AZURE_ENV_NAME"
+          Write-Host "📍 Location: $env:AZURE_LOCATION"
+
+
+      - name: Provision Infrastructure
+        shell: pwsh
+        run: |
+          Write-Host "🔍 Diagnostic information:"
+          Write-Host "Azure CLI version: $(az --version | Select-Object -First 1)"
+          Write-Host "AZD version: $(azd version)"
+          Write-Host "Current account: $(az account show --query name -o tsv || echo 'Not logged in')"
+          Write-Host "Current OIDC token: $(if ($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN) { 'Present' } else { 'Not found' })"
+          
+          # Verify Azure login status
+          if (-not (az account show 2>$null)) {
+            Write-Host "❌ Azure CLI is not logged in. The Azure/login action should have handled this." -ForegroundColor Red
+            exit 1
+          }
+          
+          Write-Host "🚀 Provisioning infrastructure..."
+          cd apphost
+          
+          # Select or create environment
+          if (-not (azd env select $env:AZURE_ENV_NAME 2>$null)) {
+            Write-Host "📦 Creating new azd environment: $env:AZURE_ENV_NAME"
+            azd env new $env:AZURE_ENV_NAME --location $env:AZURE_LOCATION --subscription $env:AZURE_SUBSCRIPTION_ID
+          }
+          
+          azd provision --no-prompt
+
+      - name: Deploy Application
+        shell: pwsh
+        run: |
+          Write-Host "🚀 Deploying application..."
+          # Ensure we're in the right directory
+          cd apphost
+          
+          # Deploy the application
+          azd deploy --no-prompt
+          
+          Write-Host "📋 Getting deployment information..."
+          azd show --output table
+
