@@ -8,6 +8,8 @@
 #
 # Environment variables required:
 # PAGERDUTY_API_TOKEN - PagerDuty API token with appropriate permissions
+# PAGERDUTY_SERVICE_ID - PagerDuty Service ID
+# PAGERDUTY_PRIORITY_ID - PagerDuty Priority ID (optional, defaults to P28K36R for P1)
 #
 # Usage examples:
 # ./create-pagerduty-incident.sh                # Use all defaults
@@ -28,6 +30,9 @@ if [ -z "$PAGERDUTY_SERVICE_ID" ]; then
     exit 1
 fi
 
+# Check if PAGERDUTY_PRIORITY_ID is set (optional, defaults to P1)
+PAGERDUTY_PRIORITY_ID=${PAGERDUTY_PRIORITY_ID:-"P28K36R"}
+
 # Set parameters with defaults
 CONTAINER_APP_NAME=${1:-"octopetsapi"}
 PAGERDUTY_SERVICE_NAME=${2:-"Default Service"}
@@ -38,19 +43,21 @@ echo "Using the following parameters:"
 echo "Container App: $CONTAINER_APP_NAME"
 echo "PagerDuty Service Name: $PAGERDUTY_SERVICE_NAME"
 echo "PagerDuty Service ID: $PAGERDUTY_SERVICE_ID"
+echo "PagerDuty Priority ID: $PAGERDUTY_PRIORITY_ID"
 echo "PagerDuty Urgency: $PAGERDUTY_URGENCY"
 
-# Set the incident title
-INCIDENT_TITLE="Container App $CONTAINER_APP_NAME is down with 500 errors"
+# Set the incident title with timestamp
+TIMESTAMP=$(date +"%Y%m%d-%H%M")
+INCIDENT_TITLE="Container App $CONTAINER_APP_NAME is down with 500 errors [$TIMESTAMP]"
 
 # Get the description from the prompt file
 # Go up one directory if running from within .github/scripts
 REPO_ROOT="$(dirname "$(dirname "$PWD")")"
 if [[ "$PWD" == *".github/scripts" ]]; then
-    PROMPT_PATH="$REPO_ROOT/.github/prompts/sreagent.prompt.md"
+    PROMPT_PATH="$REPO_ROOT/.github/prompts/sreagent-500errors.prompt.md"
 else
     # If running from repo root
-    PROMPT_PATH="$PWD/.github/prompts/sreagent.prompt.md"
+    PROMPT_PATH="$PWD/.github/prompts/sreagent-500errors.prompt.md"
 fi
 
 if [ ! -f "$PROMPT_PATH" ]; then
@@ -74,6 +81,10 @@ JSON_PAYLOAD=$(cat <<EOF
       "type": "service_reference"
     },
     "urgency": "$PAGERDUTY_URGENCY",
+    "priority": {
+      "id": "$PAGERDUTY_PRIORITY_ID",
+      "type": "priority_reference"
+    },
     "body": {
       "type": "incident_body",
       "details": "$INCIDENT_DESCRIPTION"
