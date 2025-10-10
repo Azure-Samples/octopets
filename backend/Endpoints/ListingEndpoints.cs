@@ -5,7 +5,7 @@ namespace Octopets.Backend.Endpoints;
 
 public static class ListingEndpoints
 {    // Memory-safe operation with bounded allocations and proper resource management
-    private static async Task AReallyExpensiveOperation(CancellationToken cancellationToken = default)
+    private static async Task AReallyExpensiveOperation(ILogger logger, CancellationToken cancellationToken = default)
     {
         // Add telemetry for monitoring
         var startTime = DateTime.UtcNow;
@@ -17,32 +17,35 @@ public static class ListingEndpoints
             const int maxIterations = 10;
             const int smallBufferSize = 1024; // 1KB instead of 100MB
             
+            var bufferPool = System.Buffers.ArrayPool<byte>.Shared;
+            
             for (int i = 0; i < maxIterations; i++)
             {
                 // Check for cancellation
                 cancellationToken.ThrowIfCancellationRequested();
                 
-                // Use a small buffer that will be garbage collected
-                byte[] buffer = new byte[smallBufferSize];
-                
-                // Simulate some work without holding memory
-                Array.Fill(buffer, (byte)(i % 256));
-                
-                // Small delay to simulate work
-                await Task.Delay(10, cancellationToken);
+                // Use pooled buffer to avoid GC pressure
+                byte[] buffer = bufferPool.Rent(smallBufferSize);
+                try
+                {
+                    // Simulate some work without holding memory
+                    Array.Fill(buffer, (byte)(i % 256), 0, smallBufferSize);
+                    
+                    // Small delay to simulate work
+                    await Task.Delay(10, cancellationToken);
+                }
+                finally
+                {
+                    // Return buffer to pool
+                    bufferPool.Return(buffer);
+                }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // Log cancellation - proper handling instead of letting it bubble
-            throw;
         }
         finally
         {
             // Add telemetry
             var duration = DateTime.UtcNow - startTime;
-            // In production, this would log to Application Insights
-            System.Diagnostics.Debug.WriteLine($"AReallyExpensiveOperation completed in {duration.TotalMilliseconds}ms");
+            logger.LogInformation("AReallyExpensiveOperation completed in {DurationMs}ms", duration.TotalMilliseconds);
         }
     }
 
@@ -60,12 +63,12 @@ public static class ListingEndpoints
         .WithName("GetAllListings")
         .WithDescription("Gets all listings")
         .WithOpenApi();        // GET listing by id
-        group.MapGet("/{id:int}", async (int id, IListingRepository repository, IConfiguration config, CancellationToken cancellationToken) =>
+        group.MapGet("/{id:int}", async (int id, IListingRepository repository, IConfiguration config, ILogger<Program> logger, CancellationToken cancellationToken) =>
         {
             // Only throw exception or simulate memory issues if ERRORS flag is set to true
             if (config.GetValue<bool>("ERRORS"))
             {
-                await AReallyExpensiveOperation(cancellationToken);
+                await AReallyExpensiveOperation(logger, cancellationToken);
             }
 
             var listing = await repository.GetByIdAsync(id);
