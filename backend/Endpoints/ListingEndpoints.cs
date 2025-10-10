@@ -5,11 +5,13 @@ namespace Octopets.Backend.Endpoints;
 
 public static class ListingEndpoints
 {    // Method replaced with minimal operation to prevent memory exhaustion
-    // Previous implementation allocated ~1GB causing OutOfMemoryException
+    // Previous implementation allocated ~1GB causing OutOfMemoryException (INC0010019)
+    // Original purpose: Simulate high memory load for testing error handling in production
+    // Fix: Removed memory allocation to prevent OOM errors while maintaining ERRORS flag compatibility
     private static void AReallyExpensiveOperation()
     {
-        // No-op: Memory allocation removed to prevent OOM errors
-        // This method is kept for backward compatibility with ERRORS flag
+        // No-op: Memory allocation removed
+        // When ERRORS flag is true, this method is called but no longer causes memory issues
     }
 
     public static void MapListingEndpoints(this WebApplication app)
