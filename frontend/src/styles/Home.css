@@ -257,24 +257,25 @@
 }
 
 /* Apply different animation patterns to prevent polaroids from moving in unison */
+/* Very slow animations (60-80s) for smooth, gentle motion */
 .polaroid-1 {
-  animation: float-1 24s ease-in-out infinite;
+  animation: float-1 60s ease-in-out infinite;
 }
 
 .polaroid-2 {
-  animation: float-2 28s ease-in-out infinite;
+  animation: float-2 70s ease-in-out infinite;
 }
 
 .polaroid-3 {
-  animation: float-3 32s ease-in-out infinite;
+  animation: float-3 80s ease-in-out infinite;
 }
 
 .polaroid-4 {
-  animation: float-4 26s ease-in-out infinite;
+  animation: float-4 65s ease-in-out infinite;
 }
 
 .polaroid-5 {
-  animation: float-5 30s ease-in-out infinite;
+  animation: float-5 75s ease-in-out infinite;
 }
 
 /* Add a subtle 3D effect with a pseudo-element */
@@ -364,13 +365,13 @@
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
   }
   25% {
-    transform: translate3d(2px, -8px, 0) rotate(calc(var(--rotate, 0deg) - 0.5deg));
+    transform: translate3d(1px, -3px, 0) rotate(calc(var(--rotate, 0deg) - 0.2deg));
   }
   50% {
-    transform: translate3d(3px, 0px, 0) rotate(var(--rotate, 0deg));
+    transform: translate3d(1.5px, 0px, 0) rotate(var(--rotate, 0deg));
   }
   75% {
-    transform: translate3d(0px, 8px, 0) rotate(calc(var(--rotate, 0deg) + 0.5deg));
+    transform: translate3d(0px, 3px, 0) rotate(calc(var(--rotate, 0deg) + 0.2deg));
   }
   100% {
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
@@ -383,13 +384,13 @@
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
   }
   25% {
-    transform: translate3d(-3px, -10px, 0) rotate(calc(var(--rotate, 0deg) + 0.7deg));
+    transform: translate3d(-1.5px, -4px, 0) rotate(calc(var(--rotate, 0deg) + 0.3deg));
   }
   50% {
-    transform: translate3d(0px, 2px, 0) rotate(var(--rotate, 0deg));
+    transform: translate3d(0px, 1px, 0) rotate(var(--rotate, 0deg));
   }
   75% {
-    transform: translate3d(-2px, 7px, 0) rotate(calc(var(--rotate, 0deg) - 0.4deg));
+    transform: translate3d(-1px, 3px, 0) rotate(calc(var(--rotate, 0deg) - 0.2deg));
   }
   100% {
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
@@ -402,13 +403,13 @@
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
   }
   25% {
-    transform: translate3d(5px, -6px, 0) rotate(calc(var(--rotate, 0deg) - 0.3deg));
+    transform: translate3d(2px, -2.5px, 0) rotate(calc(var(--rotate, 0deg) - 0.15deg));
   }
   50% {
-    transform: translate3d(-4px, 9px, 0) rotate(var(--rotate, 0deg));
+    transform: translate3d(-2px, 3.5px, 0) rotate(var(--rotate, 0deg));
   }
   75% {
-    transform: translate3d(3px, -7px, 0) rotate(calc(var(--rotate, 0deg) + 0.6deg));
+    transform: translate3d(1.5px, -3px, 0) rotate(calc(var(--rotate, 0deg) + 0.25deg));
   }
   100% {
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
@@ -421,16 +422,16 @@
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
   }
   20% {
-    transform: translate3d(-2px, -9px, 0) rotate(calc(var(--rotate, 0deg) - 0.2deg));
+    transform: translate3d(-1px, -3.5px, 0) rotate(calc(var(--rotate, 0deg) - 0.1deg));
   }
   40% {
-    transform: translate3d(1px, 2px, 0) rotate(calc(var(--rotate, 0deg) + 0.1deg));
+    transform: translate3d(0.5px, 1px, 0) rotate(calc(var(--rotate, 0deg) + 0.05deg));
   }
   60% {
-    transform: translate3d(0px, -5px, 0) rotate(var(--rotate, 0deg));
+    transform: translate3d(0px, -2px, 0) rotate(var(--rotate, 0deg));
   }
   80% {
-    transform: translate3d(3px, 7px, 0) rotate(calc(var(--rotate, 0deg) + 0.3deg));
+    transform: translate3d(1.5px, 3px, 0) rotate(calc(var(--rotate, 0deg) + 0.15deg));
   }
   100% {
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
@@ -443,16 +444,16 @@
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
   }
   20% {
-    transform: translate3d(1px, 8px, 0) rotate(calc(var(--rotate, 0deg) + 0.4deg));
+    transform: translate3d(0.5px, 3px, 0) rotate(calc(var(--rotate, 0deg) + 0.2deg));
   }
   40% {
-    transform: translate3d(-2px, -6px, 0) rotate(calc(var(--rotate, 0deg) - 0.2deg));
+    transform: translate3d(-1px, -2.5px, 0) rotate(calc(var(--rotate, 0deg) - 0.1deg));
   }
   60% {
-    transform: translate3d(2px, -10px, 0) rotate(calc(var(--rotate, 0deg) - 0.6deg));
+    transform: translate3d(1px, -4px, 0) rotate(calc(var(--rotate, 0deg) - 0.25deg));
   }
   80% {
-    transform: translate3d(-1px, 4px, 0) rotate(calc(var(--rotate, 0deg) + 0.2deg));
+    transform: translate3d(-0.5px, 2px, 0) rotate(calc(var(--rotate, 0deg) + 0.1deg));
   }
   100% {
     transform: translate3d(0, 0, 0) rotate(var(--rotate, 0deg));
