@@ -29,7 +29,6 @@ public static class ListingEndpoints
                 try
                 {
                     // Simulate some work without holding memory
-                    // Only fill the requested size, not the entire rented buffer
                     Array.Fill(buffer, (byte)(i % 256), 0, smallBufferSize);
                     
                     // Small delay to simulate work
