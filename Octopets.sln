@@ -7,7 +7,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Octopets.Backend", "backend
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Octopets.AppHost", "apphost\Octopets.AppHost.csproj", "{9AD74B40-D0B3-4BF3-A695-5190CD75C07D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Octopets.ServiceDefaults", "ServiceDefaults\Octopets.ServiceDefaults.csproj", "{66B1E172-8267-57A5-DADE-D709CF68DD45}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Octopets.ServiceDefaults", "servicedefaults\Octopets.ServiceDefaults.csproj", "{66B1E172-8267-57A5-DADE-D709CF68DD45}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{089100B1-113F-4E66-888A-E83F3999EAFD}"
 	ProjectSection(SolutionItems) = preProject
