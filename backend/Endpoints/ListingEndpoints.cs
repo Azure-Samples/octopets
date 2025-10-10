@@ -4,31 +4,49 @@ using Octopets.Backend.Repositories.Interfaces;
 namespace Octopets.Backend.Endpoints;
 
 public static class ListingEndpoints
-{    // Method to simulate memory exhaustion by allocating ~1GB of memory
-    private static void AReallyExpensiveOperation()
+{    // Memory-safe operation with bounded allocations and proper resource management
+    private static async Task AReallyExpensiveOperation(ILogger logger, CancellationToken cancellationToken = default)
     {
-        // Create lists to hold large amounts of data
-        var memoryHogs = new List<byte[]>();
-
-        // Allocate memory in chunks until we reach approximately 1GB
-        // Each iteration allocates 100MB
-        for (int i = 0; i < 10; i++)
+        // Add telemetry for monitoring
+        var startTime = DateTime.UtcNow;
+        
+        try
         {
-            // Allocate 100MB per iteration (100 * 1024 * 1024 = 104,857,600 bytes)
-            var largeArray = new byte[100 * 1024 * 1024];
-
-            // Fill with random data to ensure memory is actually allocated
-            new Random().NextBytes(largeArray);
-
-            // Add to list to prevent garbage collection
-            memoryHogs.Add(largeArray);
-
-            // Add a small delay to let the effect be more visible
-            Thread.Sleep(100);
+            // Use a bounded allocation instead of unbounded 1GB
+            // This simulates work without causing OOM
+            const int maxIterations = 10;
+            const int smallBufferSize = 1024; // 1KB instead of 100MB
+            
+            var bufferPool = System.Buffers.ArrayPool<byte>.Shared;
+            
+            for (int i = 0; i < maxIterations; i++)
+            {
+                // Check for cancellation
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                // Use pooled buffer to avoid GC pressure
+                byte[] buffer = bufferPool.Rent(smallBufferSize);
+                try
+                {
+                    // Simulate some work without holding memory
+                    Array.Fill(buffer, (byte)(i % 256), 0, smallBufferSize);
+                    
+                    // Small delay to simulate work
+                    await Task.Delay(10, cancellationToken);
+                }
+                finally
+                {
+                    // Return buffer to pool
+                    bufferPool.Return(buffer);
+                }
+            }
         }
-
-        // Retain the reference to prevent garbage collection
-        GC.KeepAlive(memoryHogs);
+        finally
+        {
+            // Add telemetry
+            var duration = DateTime.UtcNow - startTime;
+            logger.LogInformation("AReallyExpensiveOperation completed in {DurationMs}ms", duration.TotalMilliseconds);
+        }
     }
 
     public static void MapListingEndpoints(this WebApplication app)
@@ -45,12 +63,12 @@ public static class ListingEndpoints
         .WithName("GetAllListings")
         .WithDescription("Gets all listings")
         .WithOpenApi();        // GET listing by id
-        group.MapGet("/{id:int}", async (int id, IListingRepository repository, IConfiguration config) =>
+        group.MapGet("/{id:int}", async (int id, IListingRepository repository, IConfiguration config, ILogger<Program> logger, CancellationToken cancellationToken) =>
         {
             // Only throw exception or simulate memory issues if ERRORS flag is set to true
             if (config.GetValue<bool>("ERRORS"))
             {
-                AReallyExpensiveOperation();
+                await AReallyExpensiveOperation(logger, cancellationToken);
             }
 
             var listing = await repository.GetByIdAsync(id);
